@@ -17,7 +17,6 @@ const PORT = process.env.PORT || 3000;
 let currentQR = null;
 let isConnected = false;
 
-// صفحة ويب لعرض الـ QR كصورة واضحة وعالية الدقة للمسح
 app.get('/', async (req, res) => {
   if (isConnected) {
     return res.send(`
@@ -58,7 +57,6 @@ app.get('/', async (req, res) => {
           h2 { color: #111b21; margin-bottom: 8px; }
           p { color: #667781; font-size: 15px; margin-bottom: 20px; }
           img { border-radius: 8px; border: 1px solid #e9edef; }
-          .footer { margin-top: 15px; font-size: 13px; color: #8696a0; }
         </style>
       </head>
       <body>
@@ -66,7 +64,6 @@ app.get('/', async (req, res) => {
           <h2>ربط WhatsApp Business</h2>
           <p>افتح التطبيق في هاتفك > الأجهزة المرتبطة > ربط جهاز، وامسح الكود التالي:</p>
           <img src="${qrImage}" alt="WhatsApp QR Code" />
-          <div class="footer">تتجدد الصفحة تلقائياً كل 20 ثانية لتحديث الكود 🔄</div>
         </div>
       </body>
       </html>
@@ -74,24 +71,9 @@ app.get('/', async (req, res) => {
   }
 
   res.send(`
-    <!DOCTYPE html>
-    <html dir="rtl" lang="ar">
-    <head>
-      <meta charset="utf-8">
-      <meta http-equiv="refresh" content="4">
-      <title>Nexora Bot - جاري التحميل</title>
-      <style>
-        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; text-align: center; padding-top: 60px; background-color: #f7f9fa; }
-        .card { background: white; padding: 40px; border-radius: 16px; display: inline-block; box-shadow: 0 4px 15px rgba(0,0,0,0.08); }
-        h2 { color: #3b4a54; }
-      </style>
-    </head>
-    <body>
-      <div class="card">
-        <h2>جاري تحضير كود الربط... يرجى الانتظار ثوانٍ قليلة ⏳</h2>
-      </div>
-    </body>
-    </html>
+    <div style="font-family: Arial; text-align: center; padding-top: 50px;">
+      <h2>جاري تحضير كود الربط... يرجى تحديث الصفحة بعد 5 ثوانٍ ⏳</h2>
+    </div>
   `);
 });
 
@@ -122,19 +104,22 @@ const PAYMENT_DETAILS = `💳 *معلومات الدفع عبر بريدي مو�
   `📌 *خطوات التفعيل:*\n` +
   `1. قم بتحويل المبلغ عبر تطبيق بريدي موب.\n` +
   `2. أرسل صورة وصل التحويل هنا في المحادثة مباشرة 📸.\n` +
-  `3. سيقوم النظام بتأكيد طلبك وتجهيز الحساب فوراً ⚡.`;
+  `3. سيقوم النظام بتأكيد طلبك وتجهيز الحساب فوراً ⚡.\n\n` +
+  `↩️ _للرجوع للقائمة الرئيسية أرسل *0* أو *قائمة*._`;
 
-const MAIN_MENU = `📋 *مرحباً بك في متجر Nexora! إليك قائمة الاشتراكات المتوفرة:* 🎬\n\n` +
-  `🎬 *Netflix:* من 1,000 دج\n` +
-  `⭐ *Shahid VIP:* من 3,200 دج\n` +
-  `📦 *Prime Video:* 2,800 دج\n` +
-  `✨ *Disney+:* 5,800 دج\n` +
-  `🧠 *Gemini Pro:* 5,900 دج (18 شهر)\n` +
-  `🤖 *ChatGPT Plus:* 3,900 دج\n` +
-  `▶️ *YouTube Premium:* 3,900 دج\n` +
-  `👻 *Snapchat Plus:* من 2,000 دج\n\n` +
-  `💳 *للدفع:* اكتب كلمة *دفع* أو *بريدي*\n` +
-  `💡 *للتفاصيل:* اكتب اسم الخدمة مباشرة (مثال: *نتفلكس*، *جيمني*، *شاهد*...).`;
+const MAIN_MENU = `👋 *مرحباً بك في متجر Nexora للاشتراكات الرقمية!* 🌟\n\n` +
+  `اختر رقم الخدمة لمعرفة التفاصيل والأسعار مباشرة:\n\n` +
+  `[ 1 ] 🎬 *Netflix* (شاشات وحسابات كاملة)\n` +
+  `[ 2 ] ⭐ *Shahid VIP* (شاهد VIP مسلسلات ورياضة)\n` +
+  `[ 3 ] 📦 *Amazon Prime Video*\n` +
+  `[ 4 ] ✨ *Disney+*\n` +
+  `[ 5 ] 🧠 *Google Gemini Advanced* (18 شهر)\n` +
+  `[ 6 ] 🤖 *ChatGPT Plus*\n` +
+  `[ 7 ] ▶️ *YouTube Premium*\n` +
+  `[ 8 ] 👻 *Snapchat Plus*\n` +
+  `[ 9 ] 💳 *معلومات الدفع (BaridiMob RIP)*\n` +
+  `[ 10 ] 👨‍💼 *التحدث مع خدمة العملاء والدعم*\n\n` +
+  `✍️ _أرسل فقط *رقم الخدمة* (مثال: أرسل *1* لمشاهدة عروض نتفلكس)._`;
 
 async function startBot() {
   const { state, saveCreds } = await useMultiFileAuthState('auth_session');
@@ -152,9 +137,7 @@ async function startBot() {
   sock.ev.on('connection.update', (update) => {
     const { connection, lastDisconnect, qr } = update;
 
-    if (qr) {
-      currentQR = qr;
-    }
+    if (qr) currentQR = qr;
 
     if (connection === 'close') {
       isConnected = false;
@@ -178,12 +161,14 @@ async function startBot() {
     }
   });
 
+  // معالجة الرسائل
   sock.ev.on('messages.upsert', async (m) => {
     const msg = m.messages[0];
     if (!msg.message || msg.key.fromMe) return;
 
     const from = msg.key.remoteJid;
 
+    // استقبال صور وصولات الدفع
     if (msg.message.imageMessage) {
       await sock.sendMessage(from, {
         text: `✅ *تم استلام صورة الوصل بنجاح!*\n\nشكراً لثقتك بنا. يقوم فريق المبيعات حالياً بالتحقق من عملية التحويل وتجهيز بيانات حسابك.\nسيتم إرسال بيانات الاشتراك عبر هذه المحادثة خلال دقائق قليلة ⚡.`
@@ -206,6 +191,7 @@ async function startBot() {
 
     if (!userText) return;
 
+    // أوامر المشرف
     if (userText.startsWith('تسجيل')) {
       const parts = userText.split(' ');
       if (parts.length >= 4) {
@@ -232,6 +218,7 @@ async function startBot() {
       }
     }
 
+    // رسائل الشكر والإنهاء
     if (
       userText.includes('شكرا') ||
       userText.includes('يعطيك الصحه') ||
@@ -243,46 +230,100 @@ async function startBot() {
       userText.includes('خلاص')
     ) {
       await sock.sendMessage(from, {
-        text: `تمت خدمتك بنجاح وبكل سرور! 🚀💫\n\nحسابك جاهز ونتمنى لك تجربة استثنائية ✨.\n\n💡 _لأي طلب جديد أو استفسار، يكفي أن ترسل كلمة *مرحبا* في أي وقت لنكون معك فوراً._\n\n*شكراً لتعاملك معنا ونهاركم مبروك!* 🌟`
+        text: `تمت خدمتك بنجاح وبكل سرور! 🚀💫\n\nحسابك جاهز ونتمنى لك تجربة استثنائية ✨.\n\n💡 _لأي طلب جديد، أرسل *0* لعرض قائمة المنتجات في أي وقت._\n\n*شكراً لتعاملك مع Nexora!* 🌟`
       });
-    } else if (userText.includes('netflix') || userText.includes('نتفلكس') || userText.includes('نتفليكس')) {
+
+    // 1. Netflix
+    } else if (userText === '1' || userText.includes('netflix') || userText.includes('نتفلكس') || userText.includes('نتفليكس')) {
       await sock.sendMessage(from, {
-        text: `🎬 *اشتراكات Netflix الرسمية:*\n\n🔹 *شهر واحد (1 Mois):*\n• بروفايل واحد: 1,000 دج\n• حساب كامل (5 بروفايلات): 4,500 دج\n\n🔹 *3 أشهر:*\n• بروفايل واحد: 3,000 دج\n• حساب كامل: 12,000 دج\n\nللدفع أرسل كلمة *دفع*.`
+        text: `🎬 *عروض واشتراكات Netflix الرسمية:*\n\n` +
+          `🔹 *شهر واحد (1 Mois):*\n` +
+          `• بروفايل واحد (شاشة): 1,000 دج\n` +
+          `• حساب كامل خاص (5 شاشات): 4,500 دج\n\n` +
+          `🔹 *3 أشهر (3 Mois):*\n` +
+          `• بروفايل واحد: 3,000 دج\n` +
+          `• حساب كامل خاص: 12,000 دج\n\n` +
+          `💳 للشراء والدفع: أرسل الرقم *9*\n` +
+          `↩️ للعودة للقائمة الرئيسية: أرسل *0*`
       });
-    } else if (userText.includes('shahid') || userText.includes('شاهد')) {
+
+    // 2. Shahid VIP
+    } else if (userText === '2' || userText.includes('shahid') || userText.includes('شاهد')) {
       await sock.sendMessage(from, {
-        text: `⭐ *اشتراكات Shahid VIP:*\n\n• 3 أشهر: 3,200 دج\n• 12 شهر (سنة كاملة): 8,900 دج\n\nللدفع أرسل كلمة *دفع*.`
+        text: `⭐ *عروض اشتراكات Shahid VIP:*\n\n` +
+          `• اشتراك 3 أشهر: 3,200 دج\n` +
+          `• اشتراك 12 شهر (سنة كاملة): 8,900 دج\n\n` +
+          `💳 للشراء والدفع: أرسل الرقم *9*\n` +
+          `↩️ للعودة للقائمة الرئيسية: أرسل *0*`
       });
-    } else if (userText.includes('prime') || userText.includes('برايم') || userText.includes('amazon')) {
+
+    // 3. Amazon Prime
+    } else if (userText === '3' || userText.includes('prime') || userText.includes('برايم') || userText.includes('amazon')) {
       await sock.sendMessage(from, {
-        text: `📦 *اشتراك Amazon Prime Video:*\n\n• حساب كامل / شهر: 2,800 دج\n\nللدفع أرسل كلمة *دفع*.`
+        text: `📦 *اشتراك Amazon Prime Video:*\n\n` +
+          `• حساب كامل / مدة شهر: 2,800 دج\n\n` +
+          `💳 للشراء والدفع: أرسل الرقم *9*\n` +
+          `↩️ للعودة للقائمة الرئيسية: أرسل *0*`
       });
-    } else if (userText.includes('disney') || userText.includes('ديزني')) {
+
+    // 4. Disney+
+    } else if (userText === '4' || userText.includes('disney') || userText.includes('ديزني')) {
       await sock.sendMessage(from, {
-        text: `✨ *اشتراك Disney+:*\n\n• حساب كامل / شهر: 5,800 دج\n\nللدفع أرسل كلمة *دفع*.`
+        text: `✨ *اشتراك Disney+ الرسمي:*\n\n` +
+          `• حساب كامل / مدة شهر: 5,800 دج\n\n` +
+          `💳 للشراء والدفع: أرسل الرقم *9*\n` +
+          `↩️ للعودة للقائمة الرئيسية: أرسل *0*`
       });
-    } else if (userText.includes('gemini') || userText.includes('جيميني') || userText.includes('جيمني')) {
+
+    // 5. Google Gemini Pro
+    } else if (userText === '5' || userText.includes('gemini') || userText.includes('جيميني') || userText.includes('جيمني')) {
       await sock.sendMessage(from, {
-        text: `🧠 *اشتراك Google Gemini Pro الرسمي:*\n\n• مدة 18 شهر (سنة ونصف): 5,900 دج\n✨ وصول كامل لأحدث النماذج مع ضمان كامل المدة.\n\nللدفع أرسل كلمة *دفع*.`
+        text: `🧠 *اشتراك Google Gemini Advanced / Pro:*\n\n` +
+          `• مدة 18 شهر (سنة ونصف): 5,900 دج فقط!\n` +
+          `✨ حساب رسمي كامل، الوصول لأقوى النماذج ومساحة تخزين سحابية ضخمة مع ضمان كامل المدة.\n\n` +
+          `💳 للشراء والدفع: أرسل الرقم *9*\n` +
+          `↩️ للعودة للقائمة الرئيسية: أرسل *0*`
       });
-    } else if (userText.includes('chatgpt') || userText.includes('gpt') || userText.includes('شات')) {
+
+    // 6. ChatGPT Plus
+    } else if (userText === '6' || userText.includes('chatgpt') || userText.includes('gpt') || userText.includes('شات')) {
       await sock.sendMessage(from, {
-        text: `🤖 *اشتراك ChatGPT Plus:*\n\n• مدة شهر واحد: 3,900 دج\n\nللدفع أرسل كلمة *دفع*.`
+        text: `🤖 *اشتراك ChatGPT Plus (GPT-4o):*\n\n` +
+          `• مدة شهر واحد: 3,900 دج\n\n` +
+          `💳 للشراء والدفع: أرسل الرقم *9*\n` +
+          `↩️ للعودة للقائمة الرئيسية: أرسل *0*`
       });
-    } else if (userText.includes('youtube') || userText.includes('يوتيوب')) {
+
+    // 7. YouTube Premium
+    } else if (userText === '7' || userText.includes('youtube') || userText.includes('يوتيوب')) {
       await sock.sendMessage(from, {
-        text: `▶️ *اشتراك YouTube Premium:*\n\n• مدة شهر واحد: 3,900 دج\n\nللدفع أرسل كلمة *دفع*.`
+        text: `▶️ *اشتراك YouTube Premium:*\n\n` +
+          `• مدة شهر واحد (بدون إعلانات + YouTube Music): 3,900 دج\n\n` +
+          `💳 للشراء والدفع: أرسل الرقم *9*\n` +
+          `↩️ للعودة للقائمة الرئيسية: أرسل *0*`
       });
-    } else if (userText.includes('snap') || userText.includes('سناب')) {
+
+    // 8. Snapchat Plus
+    } else if (userText === '8' || userText.includes('snap') || userText.includes('سناب')) {
       await sock.sendMessage(from, {
-        text: `👻 *اشتراكات Snapchat Plus:*\n\n• 3 أشهر: 2,000 دج\n• 12 شهر: 4,200 دج\n\nللدفع أرسل كلمة *دفع*.`
+        text: `👻 *اشتراكات Snapchat Plus:*\n\n` +
+          `• 3 أشهر: 2,000 دج\n` +
+          `• 12 شهر (سنة كاملة): 4,200 دج\n\n` +
+          `💳 للشراء والدفع: أرسل الرقم *9*\n` +
+          `↩️ للعودة للقائمة الرئيسية: أرسل *0*`
       });
-    } else if (userText.includes('دفع') || userText.includes('خلص') || userText.includes('baridi') || userText.includes('ccp') || userText.includes('rip')) {
+
+    // 9. الدفع
+    } else if (userText === '9' || userText.includes('دفع') || userText.includes('خلص') || userText.includes('baridi') || userText.includes('ccp') || userText.includes('rip')) {
       await sock.sendMessage(from, { text: PAYMENT_DETAILS });
-    } else if (userText.includes('مسؤول') || userText.includes('مساعده') || userText.includes('دعم')) {
+
+    // 10. الدعم الفني
+    } else if (userText === '10' || userText.includes('مسؤول') || userText.includes('مساعده') || userText.includes('دعم')) {
       await sock.sendMessage(from, {
-        text: `👨‍💼 مرحباً بك! تم إشعار المشرف وسيقوم بالرد عليك شخصياً في هذه المحادثة مباشرة.`
+        text: `👨‍💼 مرحباً بك! تم تنبيه المشرف وسيقوم بالرد عليك شخصياً ومساعدتك في هذه المحادثة مباشرة.\n\n↩️ للعودة للقائمة أرسل *0*.`
       });
+
+    // القائمة الرئيسية الافتراضية
     } else {
       await sock.sendMessage(from, { text: MAIN_MENU });
     }
@@ -300,7 +341,7 @@ async function startBot() {
 
       if (diffDays <= 3 && diffDays > 0 && !sub.reminderSent) {
         await sock.sendMessage(sub.phone, {
-          text: `مرحباً بك عزيزي المشترك 🌟\n\nنود تذكيرك بأن اشتراكك في خدمة *${sub.service}* سينتهي خلال *${diffDays} أيام*.\nلتجديد اشتراكك دون انقطاع، أرسل كلمة *دفع*.`
+          text: `مرحباً بك عزيزي المشترك 🌟\n\nنود تذكيرك بأن اشتراكك في خدمة *${sub.service}* سينتهي خلال *${diffDays} أيام*.\nلتجديد اشتراكك دون انقطاع، أرسل الرقم *9* لتفاصيل الدفع.`
         });
         sub.reminderSent = true;
         modified = true;
