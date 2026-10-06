@@ -5,18 +5,99 @@ const {
   fetchLatestBaileysVersion
 } = require('@whiskeysockets/baileys');
 const pino = require('pino');
+const QRCode = require('qrcode');
 const express = require('express');
 const cron = require('node-cron');
 const fs = require('fs');
 const path = require('path');
 
-// 1. خادم Express لإبقاء الاستضافة نشطة
 const app = express();
 const PORT = process.env.PORT || 3000;
-app.get('/', (req, res) => res.send('Nexora WhatsApp Bot is Active! 🚀'));
-app.listen(PORT, () => console.log(`Web server listening on port ${PORT}`));
 
-// 2. إدارة قاعدة بيانات الاشتراكات
+let currentQR = null;
+let isConnected = false;
+
+// صفحة ويب لعرض الـ QR كصورة واضحة وعالية الدقة للمسح
+app.get('/', async (req, res) => {
+  if (isConnected) {
+    return res.send(`
+      <!DOCTYPE html>
+      <html dir="rtl" lang="ar">
+      <head>
+        <meta charset="utf-8">
+        <title>Nexora Bot - متصل</title>
+        <style>
+          body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; text-align: center; padding-top: 60px; background-color: #f7f9fa; }
+          .card { background: white; padding: 40px; border-radius: 16px; display: inline-block; box-shadow: 0 4px 15px rgba(0,0,0,0.08); }
+          h1 { color: #25D366; margin-bottom: 10px; }
+          p { color: #555; font-size: 18px; }
+        </style>
+      </head>
+      <body>
+        <div class="card">
+          <h1>✅ تم الاتصال بواتساب بنجاح!</h1>
+          <p>البوت نشط ويعمل حالياً على مدار الساعة للرد على الزبائن.</p>
+        </div>
+      </body>
+      </html>
+    `);
+  }
+
+  if (currentQR) {
+    const qrImage = await QRCode.toDataURL(currentQR, { width: 340, margin: 2 });
+    return res.send(`
+      <!DOCTYPE html>
+      <html dir="rtl" lang="ar">
+      <head>
+        <meta charset="utf-8">
+        <meta http-equiv="refresh" content="20">
+        <title>Nexora Bot - مسح الكود</title>
+        <style>
+          body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; text-align: center; padding-top: 30px; background-color: #f0f2f5; }
+          .card { background: white; padding: 30px; border-radius: 16px; display: inline-block; box-shadow: 0 4px 20px rgba(0,0,0,0.1); }
+          h2 { color: #111b21; margin-bottom: 8px; }
+          p { color: #667781; font-size: 15px; margin-bottom: 20px; }
+          img { border-radius: 8px; border: 1px solid #e9edef; }
+          .footer { margin-top: 15px; font-size: 13px; color: #8696a0; }
+        </style>
+      </head>
+      <body>
+        <div class="card">
+          <h2>ربط WhatsApp Business</h2>
+          <p>افتح التطبيق في هاتفك > الأجهزة المرتبطة > ربط جهاز، وامسح الكود التالي:</p>
+          <img src="${qrImage}" alt="WhatsApp QR Code" />
+          <div class="footer">تتجدد الصفحة تلقائياً كل 20 ثانية لتحديث الكود 🔄</div>
+        </div>
+      </body>
+      </html>
+    `);
+  }
+
+  res.send(`
+    <!DOCTYPE html>
+    <html dir="rtl" lang="ar">
+    <head>
+      <meta charset="utf-8">
+      <meta http-equiv="refresh" content="4">
+      <title>Nexora Bot - جاري التحميل</title>
+      <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; text-align: center; padding-top: 60px; background-color: #f7f9fa; }
+        .card { background: white; padding: 40px; border-radius: 16px; display: inline-block; box-shadow: 0 4px 15px rgba(0,0,0,0.08); }
+        h2 { color: #3b4a54; }
+      </style>
+    </head>
+    <body>
+      <div class="card">
+        <h2>جاري تحضير كود الربط... يرجى الانتظار ثوانٍ قليلة ⏳</h2>
+      </div>
+    </body>
+    </html>
+  `);
+});
+
+app.listen(PORT, () => console.log(`Web server running on port ${PORT}`));
+
+// إدارة قاعدة بيانات الاشتراكات
 const DB_FILE = path.join(__dirname, 'subscriptions.json');
 
 function loadSubscriptions() {
@@ -55,8 +136,6 @@ const MAIN_MENU = `📋 *مرحباً بك في متجر Nexora! إليك قائ
   `💳 *للدفع:* اكتب كلمة *دفع* أو *بريدي*\n` +
   `💡 *للتفاصيل:* اكتب اسم الخدمة مباشرة (مثال: *نتفلكس*، *جيمني*، *شاهد*...).`;
 
-let isRequestingCode = false;
-
 async function startBot() {
   const { state, saveCreds } = await useMultiFileAuthState('auth_session');
   const { version } = await fetchLatestBaileysVersion();
@@ -65,63 +144,40 @@ async function startBot() {
     version,
     logger: pino({ level: 'silent' }),
     auth: state,
-    printQRInTerminal: false,
-    connectTimeoutMs: 60000,
-    defaultQueryTimeoutMs: 60000,
-    keepAliveIntervalMs: 10000
+    printQRInTerminal: false
   });
 
   sock.ev.on('creds.update', saveCreds);
 
-  // طلب كود الربط بالرقم المدمج
-  if (!sock.authState.creds.registered && !isRequestingCode) {
-    isRequestingCode = true;
-    const myPhoneNumber = "213550439342";
-
-    // مهلة 15 ثانية لتجهيز الهاتف وفتح شاشة الإدخال
-    setTimeout(async () => {
-      try {
-        const code = await sock.requestPairingCode(myPhoneNumber);
-        const formattedCode = code?.match(/.{1,4}/g)?.join("-") || code;
-
-        console.log('\n======================================');
-        console.log('YOUR PAIRING CODE IS:');
-        console.log(`>>> ${formattedCode} <<<`);
-        console.log('======================================\n');
-      } catch (err) {
-        console.error('Pairing code error:', err?.message || err);
-      } finally {
-        setTimeout(() => { isRequestingCode = false; }, 120000);
-      }
-    }, 15000);
-  }
-
   sock.ev.on('connection.update', (update) => {
-    const { connection, lastDisconnect } = update;
-    const statusCode = lastDisconnect?.error?.output?.statusCode;
+    const { connection, lastDisconnect, qr } = update;
+
+    if (qr) {
+      currentQR = qr;
+    }
 
     if (connection === 'close') {
+      isConnected = false;
+      const statusCode = lastDisconnect?.error?.output?.statusCode;
       const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
-      console.log(`انقطع الاتصال (رمز الحالة: ${statusCode}). إعادة المحاولة بعد 6 ثوانٍ...`);
+      console.log(`Connection closed (${statusCode}). Reconnecting: ${shouldReconnect}`);
 
       if (statusCode === DisconnectReason.loggedOut) {
-        console.log('تم تسجيل الخروج، يجري مسح بيانات الجلسة القديمة...');
         try {
           fs.rmSync(path.join(__dirname, 'auth_session'), { recursive: true, force: true });
         } catch (e) {}
       }
 
       if (shouldReconnect) {
-        setTimeout(() => {
-          startBot();
-        }, 6000);
+        setTimeout(() => startBot(), 5000);
       }
     } else if (connection === 'open') {
+      isConnected = true;
+      currentQR = null;
       console.log('✅ تم الاتصال بحساب واتساب بنجاح! البوت جاهز للاستخدام.');
     }
   });
 
-  // معالجة الرسائل المستلمة
   sock.ev.on('messages.upsert', async (m) => {
     const msg = m.messages[0];
     if (!msg.message || msg.key.fromMe) return;
@@ -232,7 +288,7 @@ async function startBot() {
     }
   });
 
-  // تذكير يومي بالاشتراكات (عند الساعة 10:00 صباحاً)
+  // فحص التذكيرات اليومية
   cron.schedule('0 10 * * *', async () => {
     const subs = loadSubscriptions();
     const now = new Date();
