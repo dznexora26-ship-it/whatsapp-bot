@@ -38,7 +38,7 @@ function saveSubscriptions(subs) {
   }
 }
 
-// دالة مساعدة لإرسال رسائل نصية عادية
+// دالة إرسال رسالة نصية عادية
 async function sendTextMessage(to, text) {
   try {
     await axios.post(
@@ -60,7 +60,7 @@ async function sendTextMessage(to, text) {
   }
 }
 
-// دالة إرسال رسالة بأزرار تفاعلية (حتى 3 أزرار)
+// دالة إرسال أزرار تفاعلية (Buttons)
 async function sendButtonMessage(to, bodyText, buttons) {
   try {
     await axios.post(
@@ -92,23 +92,55 @@ async function sendButtonMessage(to, bodyText, buttons) {
   }
 }
 
-// دالة إرسال قائمة الخدمات المتوافقة والمضمونة 100%
+// دالة إرسال القائمة المنسدلة الشاملة لكل الخدمات
 async function sendServiceList(to) {
-  const menuText = `📋 *مرحباً بك! إليك قائمة الاشتراكات الرقمية المتوفرة:*\n\n` +
-                   `🎬 *Netflix:* من 1,000 دج\n` +
-                   `⭐ *Shahid VIP:* من 3,200 دج\n` +
-                   `📦 *Prime Video:* 2,800 دج\n` +
-                   `✨ *Disney+:* 5,800 دج\n` +
-                   `🤖 *ChatGPT Plus:* 3,900 دج\n` +
-                   `▶️ *YouTube Premium:* 3,900 دج\n` +
-                   `👻 *Snapchat Plus:* من 2,000 دج\n\n` +
-                   `👇 _اختر من الأزرار السريعة أو اكتب اسم الخدمة مباشرة لعرض تفاصيلها:_`;
-
-  await sendButtonMessage(to, menuText, [
-    { id: "srv_netflix", title: "Netflix 🎬" },
-    { id: "srv_shahid", title: "Shahid ⭐" },
-    { id: "btn_pay", title: "طرق الدفع 💳" }
-  ]);
+  try {
+    await axios.post(
+      `https://graph.facebook.com/v19.0/${PHONE_NUMBER_ID}/messages`,
+      {
+        messaging_product: "whatsapp",
+        to: to,
+        type: "interactive",
+        interactive: {
+          type: "list",
+          header: { type: "text", text: "الاشتراكات الرقمية 🎬" },
+          body: { text: "مرحباً بك! اختر أي خدمة من القائمة لعرض تفاصيل الباقات والأسعار:" },
+          footer: { text: "ضمان كامل وتفعيل فوري ⚡" },
+          action: {
+            button: "عرض الخدمات",
+            sections: [
+              {
+                title: "الأفلام والمسلسلات",
+                rows: [
+                  { id: "srv_netflix", title: "Netflix", description: "شاشات وحسابات كاملة 1 أو 3 أشهر" },
+                  { id: "srv_shahid", title: "Shahid VIP", description: "اشتراكات 3 أشهر وسنة كاملة" },
+                  { id: "srv_prime", title: "Prime Video", description: "حساب كامل شهر واحد" },
+                  { id: "srv_disney", title: "Disney+", description: "حساب كامل شهر واحد" }
+                ]
+              },
+              {
+                title: "الذكاء الاصطناعي والتطبيقات",
+                rows: [
+                  { id: "srv_gemini", title: "Gemini Pro", description: "اشتراك رسمي لمدة 18 شهر (سنة ونصف)" },
+                  { id: "srv_chatgpt", title: "ChatGPT Plus", description: "اشتراك شهري رسمي" },
+                  { id: "srv_youtube", title: "YouTube Premium", description: "بدون إعلانات وموسيقى بالخلفية" },
+                  { id: "srv_snap", title: "Snapchat Plus", description: "اشتراكات 3 أشهر أو 12 شهر" }
+                ]
+              }
+            ]
+          }
+        }
+      },
+      {
+        headers: {
+          Authorization: `Bearer ${WHATSAPP_TOKEN}`,
+          "Content-Type": "application/json"
+        }
+      }
+    );
+  } catch (error) {
+    console.error("Error sending list:", error.response?.data || error.message);
+  }
 }
 
 // ==========================================
@@ -152,15 +184,15 @@ app.post('/webhook', async (req, res) => {
         return res.sendStatus(200);
       }
 
-      // 2. معالجة النصوص والأزرار التفاعلية
+      // 2. قراءة الأزرار والقوائم والنصوص
       let selectedId = "";
       let userText = "";
 
       if (message.type === 'interactive') {
-        if (message.interactive.type === 'button_reply') {
-          selectedId = message.interactive.button_reply.id;
-        } else if (message.interactive.type === 'list_reply') {
+        if (message.interactive.type === 'list_reply') {
           selectedId = message.interactive.list_reply.id;
+        } else if (message.interactive.type === 'button_reply') {
+          selectedId = message.interactive.button_reply.id;
         }
       } else if (message.type === 'text') {
         userText = (message.text.body || "")
@@ -172,7 +204,7 @@ app.post('/webhook', async (req, res) => {
           .replace(/\s+/g, ' ');
       }
 
-      // تسجيل اشتراك جديد لزبون (خاص بالمدير)
+      // تسجيل اشتراك جديد لزبون (خاص بك كمدير)
       if (userText.startsWith("تسجيل")) {
         const parts = userText.split(" ");
         if (parts.length >= 4) {
@@ -197,6 +229,10 @@ app.post('/webhook', async (req, res) => {
           return res.sendStatus(200);
         }
       }
+
+      // ----------------------------------------------------
+      // الردود على الخدمات
+      // ----------------------------------------------------
 
       // أ. Netflix
       if (selectedId === "srv_netflix" || userText.includes("netflix") || userText.includes("نتفلكس")) {
@@ -240,8 +276,18 @@ app.post('/webhook', async (req, res) => {
           { id: "btn_menu", title: "باقي الخدمات 📋" }
         ]);
 
-      // هـ. ChatGPT
-      } else if (selectedId === "srv_chatgpt" || userText.includes("chatgpt") || userText.includes("gpt")) {
+      // هـ. Gemini Pro (تم التعديل إلى 18 شهراً)
+      } else if (selectedId === "srv_gemini" || userText.includes("gemini") || userText.includes("جيميني") || userText.includes("جيمني")) {
+        const msg = `🧠 *اشتراك Google Gemini Pro الرسمي:*\n\n` +
+                    `• مدة 18 شهر (سنة ونصف): 5,900 دج\n\n` +
+                    `✨ وصول كامل لأقوى قدرات ونماذج الذكاء الاصطناعي مع ضمان كامل المدة.`;
+        await sendButtonMessage(from, msg, [
+          { id: "btn_pay", title: "طرق الدفع 💳" },
+          { id: "btn_menu", title: "باقي الخدمات 📋" }
+        ]);
+
+      // و. ChatGPT Plus
+      } else if (selectedId === "srv_chatgpt" || userText.includes("chatgpt") || userText.includes("gpt") || userText.includes("شات")) {
         const msg = `🤖 *اشتراك ChatGPT Plus:*\n\n` +
                     `• مدة شهر واحد (1 Mois): 3,900 دج`;
         await sendButtonMessage(from, msg, [
@@ -249,7 +295,7 @@ app.post('/webhook', async (req, res) => {
           { id: "btn_menu", title: "باقي الخدمات 📋" }
         ]);
 
-      // و. YouTube Premium
+      // ز. YouTube Premium
       } else if (selectedId === "srv_youtube" || userText.includes("youtube") || userText.includes("يوتيوب")) {
         const msg = `▶️ *اشتراك YouTube Premium:*\n\n` +
                     `• مدة شهر واحد (1 Mois): 3,900 دج`;
@@ -258,7 +304,7 @@ app.post('/webhook', async (req, res) => {
           { id: "btn_menu", title: "باقي الخدمات 📋" }
         ]);
 
-      // ز. Snapchat Plus
+      // ح. Snapchat Plus
       } else if (selectedId === "srv_snap" || userText.includes("snap") || userText.includes("سناب")) {
         const msg = `👻 *اشتراكات Snapchat Plus:*\n\n` +
                     `• مدة 3 أشهر: 2,000 دج\n` +
@@ -268,7 +314,7 @@ app.post('/webhook', async (req, res) => {
           { id: "btn_menu", title: "باقي الخدمات 📋" }
         ]);
 
-      // ح. طرق الدفع
+      // ط. طرق الدفع
       } else if (selectedId === "btn_pay" || userText.includes("دفع") || userText.includes("خلص") || userText.includes("baridi") || userText.includes("ccp")) {
         const payMsg = `💳 *طرق الدفع المتاحة:*\n\n` +
                        `1️⃣ تطبيق بريدي موب (BaridiMob)\n` +
@@ -279,11 +325,11 @@ app.post('/webhook', async (req, res) => {
           { id: "btn_menu", title: "قائمة الخدمات 📋" }
         ]);
 
-      // ط. التحدث مع الإدارة أو الدعم
+      // ي. التحدث مع الإدارة أو الدعم
       } else if (selectedId === "btn_support" || userText.includes("مسؤول") || userText.includes("مساعده")) {
         await sendTextMessage(from, `👨‍💼 مرحباً بك! تم إشعار ممثل خدمة العملاء وسيقوم بالرد عليك في هذه المحادثة مباشرة.`);
 
-      // ي. القائمة الكاملة أو الرد الافتراضي الترحيبي
+      // ك. القائمة المنسدلة الكاملة (تفتح افتراضياً عند الترحيب أو طلب القائمة)
       } else {
         await sendServiceList(from);
       }
