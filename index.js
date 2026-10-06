@@ -1,29 +1,30 @@
+const {
+  default: makeWASocket,
+  useMultiFileAuthState,
+  DisconnectReason,
+  fetchLatestBaileysVersion
+} = require('@whiskeysockets/baileys');
+const pino = require('pino');
+const qrcode = require('qrcode-terminal');
 const express = require('express');
-const axios = require('axios');
 const cron = require('node-cron');
 const fs = require('fs');
 const path = require('path');
 
+// إبقاء سيرفر Express شغالاً لتفادي توقف الخدمة على الاستضافة
 const app = express();
-app.use(express.json());
-
 const PORT = process.env.PORT || 3000;
-const VERIFY_TOKEN = process.env.VERIFY_TOKEN || "my_secret_token_123";
-const WHATSAPP_TOKEN = process.env.WHATSAPP_TOKEN;
-const PHONE_NUMBER_ID = process.env.PHONE_NUMBER_ID;
+app.get('/', (req, res) => res.send('Nexora WhatsApp Bot is Active! 🚀'));
+app.listen(PORT, () => console.log(`Web server listening on port ${PORT}`));
 
-// قاعدة بيانات محلية لتتبع انتهاء الاشتراكات
+// قاعدة بيانات الاشتراكات
 const DB_FILE = path.join(__dirname, 'subscriptions.json');
 
 function loadSubscriptions() {
   try {
-    if (!fs.existsSync(DB_FILE)) {
-      fs.writeFileSync(DB_FILE, JSON.stringify([]));
-    }
-    const data = fs.readFileSync(DB_FILE, 'utf8');
-    return JSON.parse(data);
+    if (!fs.existsSync(DB_FILE)) fs.writeFileSync(DB_FILE, JSON.stringify([]));
+    return JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
   } catch (err) {
-    console.error("Error reading database:", err);
     return [];
   }
 }
@@ -31,333 +32,199 @@ function loadSubscriptions() {
 function saveSubscriptions(subs) {
   try {
     fs.writeFileSync(DB_FILE, JSON.stringify(subs, null, 2));
-  } catch (err) {
-    console.error("Error writing database:", err);
-  }
+  } catch (err) {}
 }
 
-// دالة إرسال رسائل نصية عادية
-async function sendTextMessage(to, text) {
-  try {
-    await axios.post(
-      `https://graph.facebook.com/v19.0/${PHONE_NUMBER_ID}/messages`,
-      {
-        messaging_product: "whatsapp",
-        to: to,
-        text: { body: text }
-      },
-      {
-        headers: {
-          Authorization: `Bearer ${WHATSAPP_TOKEN}`,
-          "Content-Type": "application/json"
-        }
-      }
-    );
-  } catch (error) {
-    console.error("Error sending text message:", error.response?.data || error.message);
-  }
-}
-
-// دالة إرسال أزرار تفاعلية سريعة
-async function sendButtonMessage(to, bodyText, buttons) {
-  try {
-    await axios.post(
-      `https://graph.facebook.com/v19.0/${PHONE_NUMBER_ID}/messages`,
-      {
-        messaging_product: "whatsapp",
-        to: to,
-        type: "interactive",
-        interactive: {
-          type: "button",
-          body: { text: bodyText },
-          action: {
-            buttons: buttons.map((b) => ({
-              type: "reply",
-              reply: { id: b.id, title: b.title }
-            }))
-          }
-        }
-      },
-      {
-        headers: {
-          Authorization: `Bearer ${WHATSAPP_TOKEN}`,
-          "Content-Type": "application/json"
-        }
-      }
-    );
-  } catch (error) {
-    console.error("Error sending buttons:", error.response?.data || error.message);
-  }
-}
-
-// دالة إرسال قائمة الخدمات الكاملة
-async function sendServiceList(to) {
-  const menuText = `📋 *مرحباً بك! إليك قائمة الاشتراكات المتوفرة:* 🎬\n\n` +
-                   `🎬 *Netflix:* من 1,000 دج\n` +
-                   `⭐ *Shahid VIP:* من 3,200 دج\n` +
-                   `📦 *Prime Video:* 2,800 دج\n` +
-                   `✨ *Disney+:* 5,800 دج\n` +
-                   `🧠 *Gemini Pro:* 5,900 دج (18 شهر)\n` +
-                   `🤖 *ChatGPT Plus:* 3,900 دج\n` +
-                   `▶️ *YouTube Premium:* 3,900 دج\n` +
-                   `👻 *Snapchat Plus:* من 2,000 دج\n\n` +
-                   `💡 *لعرض تفاصيل وباقات أي خدمة:* اكتب اسمها مباشرة (مثال: *نتفلكس*، *جيمني*، *شاهد*...).`;
-
-  await sendButtonMessage(to, menuText, [
-    { id: "srv_netflix", title: "Netflix 🎬" },
-    { id: "srv_gemini", title: "Gemini Pro 🧠" },
-    { id: "btn_pay", title: "طرق الدفع 💳" }
-  ]);
-}
-
-// تفاصيل الدفع بالحساب
 const PAYMENT_DETAILS = `💳 *معلومات الدفع عبر بريدي موب (BaridiMob):*\n\n` +
-                        `🔹 *رقم الحساب (RIP):*\n` +
-                        `\`00799999002052369468\`\n\n` +
-                        `_(اضغط مطولاً على الرقم لنسخه مباشرة)_\n\n` +
-                        `📌 *خطوات التفعيل:*\n` +
-                        `1. قم بتحويل المبلغ عبر تطبيق بريدي موب.\n` +
-                        `2. أرسل صورة وصل التحويل هنا في المحادثة مباشرة 📸.\n` +
-                        `3. سيقوم النظام بتأكيد طلبك وتجهيز الحساب فوراً ⚡.`;
+  `🔹 *رقم الحساب (RIP):*\n` +
+  `\`00799999002052369468\`\n\n` +
+  `_(اضغط مطولاً على الرقم لنسخه مباشرة)_\n\n` +
+  `📌 *خطوات التفعيل:*\n` +
+  `1. قم بتحويل المبلغ عبر تطبيق بريدي موب.\n` +
+  `2. أرسل صورة وصل التحويل هنا في المحادثة مباشرة 📸.\n` +
+  `3. سيقوم النظام بتأكيد طلبك وتجهيز الحساب فوراً ⚡.`;
 
-// التحقق من الـ Webhook
-app.get('/webhook', (req, res) => {
-  const mode = req.query['hub.mode'];
-  const token = req.query['hub.verify_token'];
-  const challenge = req.query['hub.challenge'];
+const MAIN_MENU = `📋 *مرحباً بك في متجر Nexora! إليك قائمة الاشتراكات المتوفرة:* 🎬\n\n` +
+  `🎬 *Netflix:* من 1,000 دج\n` +
+  `⭐ *Shahid VIP:* من 3,200 دج\n` +
+  `📦 *Prime Video:* 2,800 دج\n` +
+  `✨ *Disney+:* 5,800 دج\n` +
+  `🧠 *Gemini Pro:* 5,900 دج (18 شهر)\n` +
+  `🤖 *ChatGPT Plus:* 3,900 دج\n` +
+  `▶️ *YouTube Premium:* 3,900 دج\n` +
+  `👻 *Snapchat Plus:* من 2,000 دج\n\n` +
+  `💳 للحصول على معلومات الدفع: اكتب *دفع* أو *بريدي*\n` +
+  `💡 لعرض تفاصيل أي خدمة، اكتب اسمها مباشرة (مثال: *نتفلكس*، *جيمني*، *شاهد*...).`;
 
-  if (mode === 'subscribe' && token === VERIFY_TOKEN) {
-    console.log('Webhook verified successfully!');
-    return res.status(200).send(challenge);
-  }
-  return res.sendStatus(403);
-});
+async function startBot() {
+  const { state, saveCreds } = await useMultiFileAuthState('auth_session');
+  const { version } = await fetchLatestBaileysVersion();
 
-// معالجة الرسائل الواردة
-app.post('/webhook', async (req, res) => {
-  const body = req.body;
+  const sock = makeWASocket({
+    version,
+    logger: pino({ level: 'silent' }),
+    auth: state,
+    printQRInTerminal: false
+  });
 
-  if (body.object === 'whatsapp_business_account') {
-    const entry = body.entry?.[0];
-    const changes = entry?.changes?.[0];
-    const message = changes?.value?.messages?.[0];
+  sock.ev.on('creds.update', saveCreds);
 
-    if (message) {
-      const from = message.from;
+  sock.ev.on('connection.update', (update) => {
+    const { connection, lastDisconnect, qr } = update;
 
-      // 1. معالجة الصور (وصولات الدفع)
-      if (message.type === 'image') {
-        const replyText = `✅ *تم استلام صورة الوصل بنجاح!*\n\n` +
-                          `شكراً لثقتك بنا. يقوم فريق المبيعات حالياً بالتحقق من عملية التحويل وتجهيز بيانات حسابك.\n` +
-                          `سيتم إرسال بيانات الاشتراك عبر هذه المحادثة خلال دقائق قليلة ⚡.`;
-        
-        await sendButtonMessage(from, replyText, [
-          { id: "btn_support", title: "متابعة مع الدعم 👨‍💼" }
-        ]);
-        return res.sendStatus(200);
+    // طباعة كود QR في الـ Logs لمسحه بالهاتف
+    if (qr) {
+      console.log('SCAN_QR_START');
+      qrcode.generate(qr, { small: true });
+      console.log('SCAN_QR_END');
+    }
+
+    if (connection === 'close') {
+      const shouldReconnect = lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut;
+      console.log('Connection closed, reconnecting:', shouldReconnect);
+      if (shouldReconnect) {
+        startBot();
       }
+    } else if (connection === 'open') {
+      console.log('✅ تم الاتصال بحساب واتساب بنجاح! البوت جاهز.');
+    }
+  });
 
-      // 2. قراءة الأزرار والنصوص
-      let selectedId = "";
-      let userText = "";
+  sock.ev.on('messages.upsert', async (m) => {
+    const msg = m.messages[0];
+    if (!msg.message || msg.key.fromMe) return; // تجاهل الرسائل الصادرة من البوت نفسه
 
-      if (message.type === 'interactive') {
-        if (message.interactive.type === 'button_reply') {
-          selectedId = message.interactive.button_reply.id;
-        } else if (message.interactive.type === 'list_reply') {
-          selectedId = message.interactive.list_reply.id;
-        }
-      } else if (message.type === 'text') {
-        userText = (message.text.body || "")
-          .trim()
-          .toLowerCase()
-          .replace(/[إأآا]/g, 'ا')
-          .replace(/ى/g, 'ي')
-          .replace(/ة/g, 'ه')
-          .replace(/\s+/g, ' ');
-      }
+    const from = msg.key.remoteJid;
+    // استخراج النص سواء كان رسالة عادية أو تعليق على صورة
+    const rawText = msg.message.conversation ||
+                    msg.message.extendedTextMessage?.text ||
+                    msg.message.imageMessage?.caption ||
+                    '';
 
-      // أمر تسجيل اشتراك لزبون (خاص بالمدير)
-      if (userText.startsWith("تسجيل")) {
-        const parts = userText.split(" ");
-        if (parts.length >= 4) {
-          const clientPhone = parts[1].replace("+", "").trim();
-          const serviceName = parts[2];
-          const days = parseInt(parts[3]) || 30;
+    const isImage = !!msg.message.imageMessage;
 
-          const expiryDate = new Date();
-          expiryDate.setDate(expiryDate.getDate() + days);
+    // استلام صورة الوصل
+    if (isImage) {
+      await sock.sendMessage(from, {
+        text: `✅ *تم استلام صورة الوصل بنجاح!*\n\nشكراً لثقتك بنا. يقوم فريق المبيعات حالياً بالتحقق من عملية التحويل وتجهيز بيانات حسابك.\nسيتم إرسال بيانات الاشتراك عبر هذه المحادثة خلال دقائق قليلة ⚡.`
+      });
+      return;
+    }
 
-          const subs = loadSubscriptions();
-          subs.push({
-            phone: clientPhone,
-            service: serviceName,
-            startDate: new Date().toISOString(),
-            expiryDate: expiryDate.toISOString(),
-            reminderSent: false
-          });
-          saveSubscriptions(subs);
+    const userText = rawText
+      .trim()
+      .toLowerCase()
+      .replace(/[إأآا]/g, 'ا')
+      .replace(/ى/g, 'ي')
+      .replace(/ة/g, 'ه')
+      .replace(/\s+/g, ' ');
 
-          await sendTextMessage(from, `✅ تم تسجيل اشتراك ${serviceName} للرقم ${clientPhone} بنجاح!\nتاريخ الانتهاء: ${expiryDate.toLocaleDateString('ar-EG')}.\nسيصل الزبون تذكير تلقائي قبل انتهائه بـ 3 أيام.`);
-          return res.sendStatus(200);
-        }
-      }
+    if (!userText) return;
 
-      // ----------------------------------------------------
-      // منطق الرد على الخدمات والأوامر
-      // ----------------------------------------------------
+    // أمر تسجيل اشتراك للمشرف
+    if (userText.startsWith('تسجيل')) {
+      const parts = userText.split(' ');
+      if (parts.length >= 4) {
+        const phone = parts[1].replace('+', '').trim() + '@s.whatsapp.net';
+        const service = parts[2];
+        const days = parseInt(parts[3]) || 30;
 
-      // رسالة ختام المحادثة الجميلة
-      if (
-        userText.includes("شكرا") ||
-        userText.includes("يعطيك الصحه") ||
-        userText.includes("صحيت") ||
-        userText.includes("عيشك") ||
-        userText.includes("بارك الله") ||
-        userText.includes("merci") ||
-        userText.includes("تم") ||
-        userText.includes("خلاص")
-      ) {
-        const endMsg = `تمت خدمتك بنجاح وبكل سرور! 🚀💫\n\n` +
-                       `حسابك جاهز ونتمنى لك تجربة استثنائية ✨.\n\n` +
-                       `💡 _لأي طلب جديد أو استفسار، يكفي أن ترسل كلمة *مرحبا* في أي وقت لنكون معك فوراً._\n\n` +
-                       `*شكراً لتعاملك معنا ونهاركم مبروك!* 🌟`;
-        await sendTextMessage(from, endMsg);
+        const expiry = new Date();
+        expiry.setDate(expiry.getDate() + days);
 
-      // أ. Netflix
-      } else if (selectedId === "srv_netflix" || userText.includes("netflix") || userText.includes("نتفلكس") || userText.includes("نتفليكس")) {
-        const msg = `🎬 *اشتراكات Netflix الرسمية:*\n\n` +
-                    `🔹 *شهر واحد (1 Mois):*\n` +
-                    `• بروفايل واحد (1 Profil): 1,000 دج\n` +
-                    `• حساب كامل (5 Profils): 4,500 دج\n\n` +
-                    `🔹 *3 أشهر (3 Mois):*\n` +
-                    `• بروفايل واحد (1 Profil): 3,000 دج\n` +
-                    `• حساب كامل (5 Profils): 12,000 دج`;
-        await sendButtonMessage(from, msg, [
-          { id: "btn_pay", title: "طرق الدفع 💳" },
-          { id: "btn_menu", title: "باقي الخدمات 📋" }
-        ]);
+        const subs = loadSubscriptions();
+        subs.push({
+          phone,
+          service,
+          expiryDate: expiry.toISOString(),
+          reminderSent: false
+        });
+        saveSubscriptions(subs);
 
-      // ب. Shahid
-      } else if (selectedId === "srv_shahid" || userText.includes("shahid") || userText.includes("شاهد")) {
-        const msg = `⭐ *اشتراكات Shahid VIP:*\n\n` +
-                    `• 3 أشهر: 3,200 دج\n` +
-                    `• 12 شهر (سنة كاملة): 8,900 دج`;
-        await sendButtonMessage(from, msg, [
-          { id: "btn_pay", title: "طرق الدفع 💳" },
-          { id: "btn_menu", title: "باقي الخدمات 📋" }
-        ]);
-
-      // ج. Prime Video
-      } else if (selectedId === "srv_prime" || userText.includes("prime") || userText.includes("برايم") || userText.includes("amazon")) {
-        const msg = `📦 *اشتراك Amazon Prime Video:*\n\n` +
-                    `• حساب كامل (Compte complet) / شهر: 2,800 دج`;
-        await sendButtonMessage(from, msg, [
-          { id: "btn_pay", title: "طرق الدفع 💳" },
-          { id: "btn_menu", title: "باقي الخدمات 📋" }
-        ]);
-
-      // د. Disney+
-      } else if (selectedId === "srv_disney" || userText.includes("disney") || userText.includes("ديزني")) {
-        const msg = `✨ *اشتراك Disney+:*\n\n` +
-                    `• حساب كامل (Compte complet) / شهر: 5,800 دج`;
-        await sendButtonMessage(from, msg, [
-          { id: "btn_pay", title: "طرق الدفع 💳" },
-          { id: "btn_menu", title: "باقي الخدمات 📋" }
-        ]);
-
-      // هـ. Gemini Pro
-      } else if (selectedId === "srv_gemini" || userText.includes("gemini") || userText.includes("جيميني") || userText.includes("جيمني")) {
-        const msg = `🧠 *اشتراك Google Gemini Pro الرسمي:*\n\n` +
-                    `• مدة 18 شهر (سنة ونصف): 5,900 دج\n\n` +
-                    `✨ وصول كامل لأحدث نماذج الذكاء الاصطناعي مع ضمان كامل المدة.`;
-        await sendButtonMessage(from, msg, [
-          { id: "btn_pay", title: "طرق الدفع 💳" },
-          { id: "btn_menu", title: "باقي الخدمات 📋" }
-        ]);
-
-      // و. ChatGPT Plus
-      } else if (selectedId === "srv_chatgpt" || userText.includes("chatgpt") || userText.includes("gpt") || userText.includes("شات")) {
-        const msg = `🤖 *اشتراك ChatGPT Plus:*\n\n` +
-                    `• مدة شهر واحد (1 Mois): 3,900 دج`;
-        await sendButtonMessage(from, msg, [
-          { id: "btn_pay", title: "طرق الدفع 💳" },
-          { id: "btn_menu", title: "باقي الخدمات 📋" }
-        ]);
-
-      // ز. YouTube Premium
-      } else if (selectedId === "srv_youtube" || userText.includes("youtube") || userText.includes("يوتيوب")) {
-        const msg = `▶️ *اشتراك YouTube Premium:*\n\n` +
-                    `• مدة شهر واحد (1 Mois): 3,900 دج`;
-        await sendButtonMessage(from, msg, [
-          { id: "btn_pay", title: "طرق الدفع 💳" },
-          { id: "btn_menu", title: "باقي الخدمات 📋" }
-        ]);
-
-      // ح. Snapchat Plus
-      } else if (selectedId === "srv_snap" || userText.includes("snap") || userText.includes("سناب")) {
-        const msg = `👻 *اشتراكات Snapchat Plus:*\n\n` +
-                    `• مدة 3 أشهر: 2,000 دج\n` +
-                    `• مدة 12 شهر (سنة كاملة): 4,200 دج`;
-        await sendButtonMessage(from, msg, [
-          { id: "btn_pay", title: "طرق الدفع 💳" },
-          { id: "btn_menu", title: "باقي الخدمات 📋" }
-        ]);
-
-      // ط. طرق الدفع وتفاصيل الحساب
-      } else if (selectedId === "btn_pay" || userText.includes("دفع") || userText.includes("خلص") || userText.includes("baridi") || userText.includes("ccp") || userText.includes("rip")) {
-        await sendButtonMessage(from, PAYMENT_DETAILS, [
-          { id: "btn_menu", title: "قائمة الخدمات 📋" },
-          { id: "btn_support", title: "التحدث مع الدعم 👨‍💼" }
-        ]);
-
-      // ي. التحدث مع الإدارة أو الدعم
-      } else if (selectedId === "btn_support" || userText.includes("مسؤول") || userText.includes("مساعده")) {
-        await sendTextMessage(from, `👨‍💼 مرحباً بك! تم إشعار ممثل خدمة العملاء وسيقوم بالرد عليك في هذه المحادثة مباشرة.`);
-
-      // ك. القائمة العامة أو الرد الافتراضي
-      } else {
-        await sendServiceList(from);
+        await sock.sendMessage(from, {
+          text: `✅ تم تسجيل اشتراك ${service} بنجاح!\nتاريخ الانتهاء: ${expiry.toLocaleDateString('ar-EG')}.`
+        });
+        return;
       }
     }
-    return res.sendStatus(200);
-  }
 
-  res.sendStatus(404);
-});
-
-// تذكير يومي بالاشتراكات (10:00 صباحاً)
-cron.schedule('0 10 * * *', async () => {
-  console.log("Checking expiring subscriptions...");
-  const subs = loadSubscriptions();
-  const now = new Date();
-  let modified = false;
-
-  for (let sub of subs) {
-    const expiry = new Date(sub.expiryDate);
-    const diffTime = expiry - now;
-    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-
-    if (diffDays <= 3 && diffDays > 0 && !sub.reminderSent) {
-      const reminderMsg = `مرحباً بك عزيزي المشترك 🌟\n\n` +
-                          `نود تذكيرك بأن اشتراكك في خدمة *${sub.service}* سينتهي خلال *${diffDays} أيام*.\n` +
-                          `لتجديد اشتراكك دون انقطاع، يمكنك الضغط على زر التجديد بالأسفل 👇`;
-
-      await sendButtonMessage(sub.phone, reminderMsg, [
-        { id: "btn_pay", title: "تجديد الآن 💳" },
-        { id: "btn_support", title: "التحدث مع الدعم 👨‍💼" }
-      ]);
-
-      sub.reminderSent = true;
-      modified = true;
+    // رسالة الختام الجميلة عند الشكر
+    if (
+      userText.includes('شكرا') ||
+      userText.includes('يعطيك الصحه') ||
+      userText.includes('صحيت') ||
+      userText.includes('عيشك') ||
+      userText.includes('بارك الله') ||
+      userText.includes('merci') ||
+      userText.includes('تم') ||
+      userText.includes('خلاص')
+    ) {
+      await sock.sendMessage(from, {
+        text: `تمت خدمتك بنجاح وبكل سرور! 🚀💫\n\nحسابك جاهز ونتمنى لك تجربة استثنائية ✨.\n\n💡 _لأي طلب جديد أو استفسار، يكفي أن ترسل كلمة *مرحبا* في أي وقت لنكون معك فوراً._\n\n*شكراً لتعاملك معنا ونهاركم مبروك!* 🌟`
+      });
+    } else if (userText.includes('netflix') || userText.includes('نتفلكس') || userText.includes('نتفليكس')) {
+      await sock.sendMessage(from, {
+        text: `🎬 *اشتراكات Netflix الرسمية:*\n\n🔹 *شهر واحد (1 Mois):*\n• بروفايل واحد: 1,000 دج\n• حساب كامل (5 بروفايلات): 4,500 دج\n\n🔹 *3 أشهر:*\n• بروفايل واحد: 3,000 دج\n• حساب كامل: 12,000 دج\n\nللدفع أرسل كلمة *دفع*.`
+      });
+    } else if (userText.includes('shahid') || userText.includes('شاهد')) {
+      await sock.sendMessage(from, {
+        text: `⭐ *اشتراكات Shahid VIP:*\n\n• 3 أشهر: 3,200 دج\n• 12 شهر (سنة كاملة): 8,900 دج\n\nللدفع أرسل كلمة *دفع*.`
+      });
+    } else if (userText.includes('prime') || userText.includes('برايم') || userText.includes('amazon')) {
+      await sock.sendMessage(from, {
+        text: `📦 *اشتراك Amazon Prime Video:*\n\n• حساب كامل / شهر: 2,800 دج\n\nللدفع أرسل كلمة *دفع*.`
+      });
+    } else if (userText.includes('disney') || userText.includes('ديزني')) {
+      await sock.sendMessage(from, {
+        text: `✨ *اشتراك Disney+:*\n\n• حساب كامل / شهر: 5,800 دج\n\nللدفع أرسل كلمة *دفع*.`
+      });
+    } else if (userText.includes('gemini') || userText.includes('جيميني') || userText.includes('جيمني')) {
+      await sock.sendMessage(from, {
+        text: `🧠 *اشتراك Google Gemini Pro الرسمي:*\n\n• مدة 18 شهر (سنة ونصف): 5,900 دج\n✨ وصول كامل لأحدث النماذج مع ضمان كامل المدة.\n\nللدفع أرسل كلمة *دفع*.`
+      });
+    } else if (userText.includes('chatgpt') || userText.includes('gpt') || userText.includes('شات')) {
+      await sock.sendMessage(from, {
+        text: `🤖 *اشتراك ChatGPT Plus:*\n\n• مدة شهر واحد: 3,900 دج\n\nللدفع أرسل كلمة *دفع*.`
+      });
+    } else if (userText.includes('youtube') || userText.includes('يوتيوب')) {
+      await sock.sendMessage(from, {
+        text: `▶️ *اشتراك YouTube Premium:*\n\n• مدة شهر واحد: 3,900 دج\n\nللدفع أرسل كلمة *دفع*.`
+      });
+    } else if (userText.includes('snap') || userText.includes('سناب')) {
+      await sock.sendMessage(from, {
+        text: `👻 *اشتراكات Snapchat Plus:*\n\n• 3 أشهر: 2,000 دج\n• 12 شهر: 4,200 دج\n\nللدفع أرسل كلمة *دفع*.`
+      });
+    } else if (userText.includes('دفع') || userText.includes('خلص') || userText.includes('baridi') || userText.includes('ccp') || userText.includes('rip')) {
+      await sock.sendMessage(from, { text: PAYMENT_DETAILS });
+    } else if (userText.includes('مسؤول') || userText.includes('مساعده') || userText.includes('دعم')) {
+      await sock.sendMessage(from, {
+        text: `👨‍💼 مرحباً بك! تم إشعار المشرف وسيقوم بالرد عليك شخصياً في هذه المحادثة مباشرة.`
+      });
+    } else {
+      await sock.sendMessage(from, { text: MAIN_MENU });
     }
-  }
+  });
 
-  if (modified) {
-    saveSubscriptions(subs);
-  }
-});
+  // تذكير الاشتراكات اليومي
+  cron.schedule('0 10 * * *', async () => {
+    const subs = loadSubscriptions();
+    const now = new Date();
+    let modified = false;
 
-app.listen(PORT, () => {
-  console.log(`Server is running on port ${PORT}`);
-});
+    for (let sub of subs) {
+      const expiry = new Date(sub.expiryDate);
+      const diffDays = Math.ceil((expiry - now) / (1000 * 60 * 60 * 24));
+
+      if (diffDays <= 3 && diffDays > 0 && !sub.reminderSent) {
+        await sock.sendMessage(sub.phone, {
+          text: `مرحباً بك عزيزي المشترك 🌟\n\nنود تذكيرك بأن اشتراكك في خدمة *${sub.service}* سينتهي خلال *${diffDays} أيام*.\nلتجديد اشتراكك دون انقطاع، أرسل كلمة *دفع*.`
+        });
+        sub.reminderSent = true;
+        modified = true;
+      }
+    }
+    if (modified) saveSubscriptions(subs);
+  });
+}
+
+startBot();
