@@ -73,12 +73,10 @@ async function startBot() {
 
   sock.ev.on('creds.update', saveCreds);
 
-  // طلب كود الربط مرة واحدة فقط دون تكرار
+  // طلب كود الربط بالرقم المدمج
   if (!sock.authState.creds.registered && !isRequestingCode) {
     isRequestingCode = true;
-
-    // ⚠️ ضع رقمك هنا بصيغته الدولية (مثال: 213550123456) بدون + وبدون أصفار إضافية
-    const myPhoneNumber = "213XXXXXXXXX"; 
+    const myPhoneNumber = "213550439342";
 
     setTimeout(async () => {
       try {
