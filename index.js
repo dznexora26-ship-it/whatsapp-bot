@@ -5,19 +5,18 @@ const {
   fetchLatestBaileysVersion
 } = require('@whiskeysockets/baileys');
 const pino = require('pino');
-const qrcode = require('qrcode-terminal');
 const express = require('express');
 const cron = require('node-cron');
 const fs = require('fs');
 const path = require('path');
 
-// إبقاء سيرفر Express شغالاً لتفادي توقف الخدمة على الاستضافة
+// 1. خادم Express لإبقاء الاستضافة نشطة
 const app = express();
 const PORT = process.env.PORT || 3000;
 app.get('/', (req, res) => res.send('Nexora WhatsApp Bot is Active! 🚀'));
 app.listen(PORT, () => console.log(`Web server listening on port ${PORT}`));
 
-// قاعدة بيانات الاشتراكات
+// 2. إدارة قاعدة بيانات الاشتراكات
 const DB_FILE = path.join(__dirname, 'subscriptions.json');
 
 function loadSubscriptions() {
@@ -53,8 +52,8 @@ const MAIN_MENU = `📋 *مرحباً بك في متجر Nexora! إليك قائ
   `🤖 *ChatGPT Plus:* 3,900 دج\n` +
   `▶️ *YouTube Premium:* 3,900 دج\n` +
   `👻 *Snapchat Plus:* من 2,000 دج\n\n` +
-  `💳 للحصول على معلومات الدفع: اكتب *دفع* أو *بريدي*\n` +
-  `💡 لعرض تفاصيل أي خدمة، اكتب اسمها مباشرة (مثال: *نتفلكس*، *جيمني*، *شاهد*...).`;
+  `💳 *للدفع:* اكتب كلمة *دفع* أو *بريدي*\n` +
+  `💡 *للتفاصيل:* اكتب اسم الخدمة مباشرة (مثال: *نتفلكس*، *جيمني*، *شاهد*...).`;
 
 async function startBot() {
   const { state, saveCreds } = await useMultiFileAuthState('auth_session');
@@ -69,47 +68,53 @@ async function startBot() {
 
   sock.ev.on('creds.update', saveCreds);
 
-  sock.ev.on('connection.update', (update) => {
-    const { connection, lastDisconnect, qr } = update;
+  // طلب كود الربط بدلاً من كود الـ QR
+  if (!sock.authState.creds.registered) {
+    // ⚠️ ضع رقمك هنا بالصيغة الدولية بدون (+) وبدون مسافات:
+    const myPhoneNumber = "213XXXXXXXXX"; // <--- غيّر هذا الرقم برقمك
 
-    // طباعة كود QR في الـ Logs لمسحه بالهاتف
-    if (qr) {
-      console.log('SCAN_QR_START');
-      qrcode.generate(qr, { small: true });
-      console.log('SCAN_QR_END');
-    }
+    setTimeout(async () => {
+      try {
+        const code = await sock.requestPairingCode(myPhoneNumber);
+        console.log('\n======================================');
+        console.log(`🔑 كود الربط الخاص بك هو: ${code}`);
+        console.log('======================================\n');
+      } catch (err) {
+        console.error('Error requesting pairing code:', err);
+      }
+    }, 4000);
+  }
+
+  sock.ev.on('connection.update', (update) => {
+    const { connection, lastDisconnect } = update;
 
     if (connection === 'close') {
-      const shouldReconnect = lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut;
-      console.log('Connection closed, reconnecting:', shouldReconnect);
-      if (shouldReconnect) {
-        startBot();
-      }
+      const shouldReconnect =
+        lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut;
+      console.log('Connection closed. Reconnecting:', shouldReconnect);
+      if (shouldReconnect) startBot();
     } else if (connection === 'open') {
-      console.log('✅ تم الاتصال بحساب واتساب بنجاح! البوت جاهز.');
+      console.log('✅ تم الاتصال بحساب واتساب بنجاح! البوت جاهز للاستخدام.');
     }
   });
 
   sock.ev.on('messages.upsert', async (m) => {
     const msg = m.messages[0];
-    if (!msg.message || msg.key.fromMe) return; // تجاهل الرسائل الصادرة من البوت نفسه
+    if (!msg.message || msg.key.fromMe) return;
 
     const from = msg.key.remoteJid;
-    // استخراج النص سواء كان رسالة عادية أو تعليق على صورة
-    const rawText = msg.message.conversation ||
-                    msg.message.extendedTextMessage?.text ||
-                    msg.message.imageMessage?.caption ||
-                    '';
 
-    const isImage = !!msg.message.imageMessage;
-
-    // استلام صورة الوصل
-    if (isImage) {
+    if (msg.message.imageMessage) {
       await sock.sendMessage(from, {
         text: `✅ *تم استلام صورة الوصل بنجاح!*\n\nشكراً لثقتك بنا. يقوم فريق المبيعات حالياً بالتحقق من عملية التحويل وتجهيز بيانات حسابك.\nسيتم إرسال بيانات الاشتراك عبر هذه المحادثة خلال دقائق قليلة ⚡.`
       });
       return;
     }
+
+    const rawText =
+      msg.message.conversation ||
+      msg.message.extendedTextMessage?.text ||
+      '';
 
     const userText = rawText
       .trim()
@@ -121,7 +126,6 @@ async function startBot() {
 
     if (!userText) return;
 
-    // أمر تسجيل اشتراك للمشرف
     if (userText.startsWith('تسجيل')) {
       const parts = userText.split(' ');
       if (parts.length >= 4) {
@@ -148,7 +152,6 @@ async function startBot() {
       }
     }
 
-    // رسالة الختام الجميلة عند الشكر
     if (
       userText.includes('شكرا') ||
       userText.includes('يعطيك الصحه') ||
@@ -205,7 +208,6 @@ async function startBot() {
     }
   });
 
-  // تذكير الاشتراكات اليومي
   cron.schedule('0 10 * * *', async () => {
     const subs = loadSubscriptions();
     const now = new Date();
