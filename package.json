@@ -1,14 +1,16 @@
 {
-  "name": "whatsapp-bot",
+  "name": "whatsapp-bot-nexora",
   "version": "1.0.0",
-  "description": "WhatsApp Business Bot for Render",
+  "description": "WhatsApp Bot for Nexora via Web Protocol",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"
   },
- "dependencies": {
-  "axios": "^1.6.8",
-  "express": "^4.19.2",
-  "node-cron": "^3.0.3"
-}
+  "dependencies": {
+    "@whiskeysockets/baileys": "^6.7.8",
+    "qrcode-terminal": "^0.12.0",
+    "node-cron": "^3.0.3",
+    "express": "^4.19.2",
+    "pino": "^9.0.0"
+  }
 }
