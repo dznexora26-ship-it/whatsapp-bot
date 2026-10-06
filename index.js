@@ -78,18 +78,22 @@ async function startBot() {
     isRequestingCode = true;
     const myPhoneNumber = "213550439342";
 
+    // مهلة 15 ثانية لتجهيز الهاتف وفتح شاشة الإدخال
     setTimeout(async () => {
       try {
         const code = await sock.requestPairingCode(myPhoneNumber);
+        const formattedCode = code?.match(/.{1,4}/g)?.join("-") || code;
+
         console.log('\n======================================');
-        console.log(`🔑 كود الربط الخاص بك هو: ${code}`);
+        console.log('YOUR PAIRING CODE IS:');
+        console.log(`>>> ${formattedCode} <<<`);
         console.log('======================================\n');
       } catch (err) {
-        console.error('فشل في استخراج كود الربط:', err?.message || err);
+        console.error('Pairing code error:', err?.message || err);
       } finally {
         setTimeout(() => { isRequestingCode = false; }, 120000);
       }
-    }, 6000);
+    }, 15000);
   }
 
   sock.ev.on('connection.update', (update) => {
