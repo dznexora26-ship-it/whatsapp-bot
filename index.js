@@ -90,7 +90,7 @@ async function sendButtonMessage(to, bodyText, buttons) {
   }
 }
 
-// دالة إرسال قائمة الخدمات الكاملة (نصية + أزرار متوافقة 100%)
+// دالة إرسال قائمة الخدمات الكاملة
 async function sendServiceList(to) {
   const menuText = `📋 *مرحباً بك! إليك قائمة الاشتراكات المتوفرة:* 🎬\n\n` +
                    `🎬 *Netflix:* من 1,000 دج\n` +
@@ -109,6 +109,16 @@ async function sendServiceList(to) {
     { id: "btn_pay", title: "طرق الدفع 💳" }
   ]);
 }
+
+// رسالة معلومات الدفع بالحساب
+const PAYMENT_DETAILS = `💳 *معلومات الدفع عبر بريدي موب (BaridiMob):*\n\n` +
+                        `🔹 *رقم الحساب (RIP):*\n` +
+                        `\`00799999002052369468\`\n\n` +
+                        `_(اضغط مطولاً على الرقم لنسخه مباشرة)_\n\n` +
+                        `📌 *خطوات التفعيل:*\n` +
+                        `1. قم بتحويل المبلغ عبر تطبيق بريدي موب.\n` +
+                        `2. أرسل صورة وصل التحويل هنا في المحادثة مباشرة 📸.\n` +
+                        `3. سيقوم النظام بتأكيد طلبك وتجهيز الحساب فوراً ⚡.`;
 
 // التحقق من الـ Webhook
 app.get('/webhook', (req, res) => {
@@ -168,7 +178,6 @@ app.post('/webhook', async (req, res) => {
       }
 
       // تسجيل اشتراك جديد لزبون (خاص بالمدير)
-      // الصيغة: تسجيل 0550439342 netflix 30
       if (userText.startsWith("تسجيل")) {
         const parts = userText.split(" ");
         if (parts.length >= 4) {
@@ -240,7 +249,7 @@ app.post('/webhook', async (req, res) => {
           { id: "btn_menu", title: "باقي الخدمات 📋" }
         ]);
 
-      // هـ. Gemini Pro (18 شهراً)
+      // هـ. Gemini Pro
       } else if (selectedId === "srv_gemini" || userText.includes("gemini") || userText.includes("جيميني") || userText.includes("جيمني")) {
         const msg = `🧠 *اشتراك Google Gemini Pro الرسمي:*\n\n` +
                     `• مدة 18 شهر (سنة ونصف): 5,900 دج\n\n` +
@@ -278,15 +287,11 @@ app.post('/webhook', async (req, res) => {
           { id: "btn_menu", title: "باقي الخدمات 📋" }
         ]);
 
-      // ط. طرق الدفع
-      } else if (selectedId === "btn_pay" || userText.includes("دفع") || userText.includes("خلص") || userText.includes("baridi") || userText.includes("ccp")) {
-        const payMsg = `💳 *طرق الدفع المتاحة:*\n\n` +
-                       `1️⃣ تطبيق بريدي موب (BaridiMob)\n` +
-                       `2️⃣ حوالة عبر مكاتب البريد (CCP)\n\n` +
-                       `📌 بعد إتمام عملية الدفع، قم بإرسال صورة الوصل هنا وسيتولى النظام تأكيد طلبك فوراً 📸.`;
-        await sendButtonMessage(from, payMsg, [
-          { id: "btn_support", title: "طلب الحسابات 🏦" },
-          { id: "btn_menu", title: "قائمة الخدمات 📋" }
+      // ط. طرق الدفع وتفاصيل الحساب
+      } else if (selectedId === "btn_pay" || userText.includes("دفع") || userText.includes("خلص") || userText.includes("baridi") || userText.includes("ccp") || userText.includes("rip")) {
+        await sendButtonMessage(from, PAYMENT_DETAILS, [
+          { id: "btn_menu", title: "قائمة الخدمات 📋" },
+          { id: "btn_support", title: "التحدث مع الدعم 👨‍💼" }
         ]);
 
       // ي. التحدث مع الإدارة أو الدعم
@@ -323,7 +328,7 @@ cron.schedule('0 10 * * *', async () => {
 
       await sendButtonMessage(sub.phone, reminderMsg, [
         { id: "btn_pay", title: "تجديد الآن 💳" },
-        { id: "btn_support", title: "التحدث مع الدعم 👨‍‍💼" }
+        { id: "btn_support", title: "التحدث مع الدعم 👨‍💼" }
       ]);
 
       sub.reminderSent = true;
