@@ -110,7 +110,7 @@ async function sendServiceList(to) {
   ]);
 }
 
-// رسالة معلومات الدفع بالحساب
+// تفاصيل الدفع بالحساب
 const PAYMENT_DETAILS = `💳 *معلومات الدفع عبر بريدي موب (BaridiMob):*\n\n` +
                         `🔹 *رقم الحساب (RIP):*\n` +
                         `\`00799999002052369468\`\n\n` +
@@ -177,7 +177,7 @@ app.post('/webhook', async (req, res) => {
           .replace(/\s+/g, ' ');
       }
 
-      // تسجيل اشتراك جديد لزبون (خاص بالمدير)
+      // أمر تسجيل اشتراك لزبون (خاص بالمدير)
       if (userText.startsWith("تسجيل")) {
         const parts = userText.split(" ");
         if (parts.length >= 4) {
@@ -204,11 +204,28 @@ app.post('/webhook', async (req, res) => {
       }
 
       // ----------------------------------------------------
-      // منطق الرد على الخدمات
+      // منطق الرد على الخدمات والأوامر
       // ----------------------------------------------------
 
+      // رسالة ختام المحادثة الجميلة
+      if (
+        userText.includes("شكرا") ||
+        userText.includes("يعطيك الصحه") ||
+        userText.includes("صحيت") ||
+        userText.includes("عيشك") ||
+        userText.includes("بارك الله") ||
+        userText.includes("merci") ||
+        userText.includes("تم") ||
+        userText.includes("خلاص")
+      ) {
+        const endMsg = `تمت خدمتك بنجاح وبكل سرور! 🚀💫\n\n` +
+                       `حسابك جاهز ونتمنى لك تجربة استثنائية ✨.\n\n` +
+                       `💡 _لأي طلب جديد أو استفسار، يكفي أن ترسل كلمة *مرحبا* في أي وقت لنكون معك فوراً._\n\n` +
+                       `*شكراً لتعاملك معنا ونهاركم مبروك!* 🌟`;
+        await sendTextMessage(from, endMsg);
+
       // أ. Netflix
-      if (selectedId === "srv_netflix" || userText.includes("netflix") || userText.includes("نتفلكس") || userText.includes("نتفليكس")) {
+      } else if (selectedId === "srv_netflix" || userText.includes("netflix") || userText.includes("نتفلكس") || userText.includes("نتفليكس")) {
         const msg = `🎬 *اشتراكات Netflix الرسمية:*\n\n` +
                     `🔹 *شهر واحد (1 Mois):*\n` +
                     `• بروفايل واحد (1 Profil): 1,000 دج\n` +
