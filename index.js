@@ -12,9 +12,7 @@ const VERIFY_TOKEN = process.env.VERIFY_TOKEN || "my_secret_token_123";
 const WHATSAPP_TOKEN = process.env.WHATSAPP_TOKEN;
 const PHONE_NUMBER_ID = process.env.PHONE_NUMBER_ID;
 
-// ==========================================
-// قاعدة بيانات الاشتراكات للتذكير بالتجديد
-// ==========================================
+// قاعدة بيانات محلية لتتبع انتهاء الاشتراكات
 const DB_FILE = path.join(__dirname, 'subscriptions.json');
 
 function loadSubscriptions() {
@@ -38,7 +36,7 @@ function saveSubscriptions(subs) {
   }
 }
 
-// دالة إرسال رسالة نصية عادية
+// دالة إرسال رسائل نصية عادية
 async function sendTextMessage(to, text) {
   try {
     await axios.post(
@@ -60,7 +58,7 @@ async function sendTextMessage(to, text) {
   }
 }
 
-// دالة إرسال أزرار تفاعلية (Buttons)
+// دالة إرسال أزرار تفاعلية سريعة
 async function sendButtonMessage(to, bodyText, buttons) {
   try {
     await axios.post(
@@ -92,60 +90,27 @@ async function sendButtonMessage(to, bodyText, buttons) {
   }
 }
 
-// دالة إرسال القائمة المنسدلة الشاملة لكل الخدمات
+// دالة إرسال قائمة الخدمات الكاملة (نصية + أزرار متوافقة 100%)
 async function sendServiceList(to) {
-  try {
-    await axios.post(
-      `https://graph.facebook.com/v19.0/${PHONE_NUMBER_ID}/messages`,
-      {
-        messaging_product: "whatsapp",
-        to: to,
-        type: "interactive",
-        interactive: {
-          type: "list",
-          header: { type: "text", text: "الاشتراكات الرقمية 🎬" },
-          body: { text: "مرحباً بك! اختر أي خدمة من القائمة لعرض تفاصيل الباقات والأسعار:" },
-          footer: { text: "ضمان كامل وتفعيل فوري ⚡" },
-          action: {
-            button: "عرض الخدمات",
-            sections: [
-              {
-                title: "الأفلام والمسلسلات",
-                rows: [
-                  { id: "srv_netflix", title: "Netflix", description: "شاشات وحسابات كاملة 1 أو 3 أشهر" },
-                  { id: "srv_shahid", title: "Shahid VIP", description: "اشتراكات 3 أشهر وسنة كاملة" },
-                  { id: "srv_prime", title: "Prime Video", description: "حساب كامل شهر واحد" },
-                  { id: "srv_disney", title: "Disney+", description: "حساب كامل شهر واحد" }
-                ]
-              },
-              {
-                title: "الذكاء الاصطناعي والتطبيقات",
-                rows: [
-                  { id: "srv_gemini", title: "Gemini Pro", description: "اشتراك رسمي لمدة 18 شهر (سنة ونصف)" },
-                  { id: "srv_chatgpt", title: "ChatGPT Plus", description: "اشتراك شهري رسمي" },
-                  { id: "srv_youtube", title: "YouTube Premium", description: "بدون إعلانات وموسيقى بالخلفية" },
-                  { id: "srv_snap", title: "Snapchat Plus", description: "اشتراكات 3 أشهر أو 12 شهر" }
-                ]
-              }
-            ]
-          }
-        }
-      },
-      {
-        headers: {
-          Authorization: `Bearer ${WHATSAPP_TOKEN}`,
-          "Content-Type": "application/json"
-        }
-      }
-    );
-  } catch (error) {
-    console.error("Error sending list:", error.response?.data || error.message);
-  }
+  const menuText = `📋 *مرحباً بك! إليك قائمة الاشتراكات المتوفرة:* 🎬\n\n` +
+                   `🎬 *Netflix:* من 1,000 دج\n` +
+                   `⭐ *Shahid VIP:* من 3,200 دج\n` +
+                   `📦 *Prime Video:* 2,800 دج\n` +
+                   `✨ *Disney+:* 5,800 دج\n` +
+                   `🧠 *Gemini Pro:* 5,900 دج (18 شهر)\n` +
+                   `🤖 *ChatGPT Plus:* 3,900 دج\n` +
+                   `▶️ *YouTube Premium:* 3,900 دج\n` +
+                   `👻 *Snapchat Plus:* من 2,000 دج\n\n` +
+                   `💡 *لعرض تفاصيل وباقات أي خدمة:* اكتب اسمها مباشرة (مثال: *نتفلكس*، *جيمني*، *شاهد*...).`;
+
+  await sendButtonMessage(to, menuText, [
+    { id: "srv_netflix", title: "Netflix 🎬" },
+    { id: "srv_gemini", title: "Gemini Pro 🧠" },
+    { id: "btn_pay", title: "طرق الدفع 💳" }
+  ]);
 }
 
-// ==========================================
 // التحقق من الـ Webhook
-// ==========================================
 app.get('/webhook', (req, res) => {
   const mode = req.query['hub.mode'];
   const token = req.query['hub.verify_token'];
@@ -158,9 +123,7 @@ app.get('/webhook', (req, res) => {
   return res.sendStatus(403);
 });
 
-// ==========================================
 // معالجة الرسائل الواردة
-// ==========================================
 app.post('/webhook', async (req, res) => {
   const body = req.body;
 
@@ -184,15 +147,15 @@ app.post('/webhook', async (req, res) => {
         return res.sendStatus(200);
       }
 
-      // 2. قراءة الأزرار والقوائم والنصوص
+      // 2. قراءة الأزرار والنصوص
       let selectedId = "";
       let userText = "";
 
       if (message.type === 'interactive') {
-        if (message.interactive.type === 'list_reply') {
-          selectedId = message.interactive.list_reply.id;
-        } else if (message.interactive.type === 'button_reply') {
+        if (message.interactive.type === 'button_reply') {
           selectedId = message.interactive.button_reply.id;
+        } else if (message.interactive.type === 'list_reply') {
+          selectedId = message.interactive.list_reply.id;
         }
       } else if (message.type === 'text') {
         userText = (message.text.body || "")
@@ -204,7 +167,8 @@ app.post('/webhook', async (req, res) => {
           .replace(/\s+/g, ' ');
       }
 
-      // تسجيل اشتراك جديد لزبون (خاص بك كمدير)
+      // تسجيل اشتراك جديد لزبون (خاص بالمدير)
+      // الصيغة: تسجيل 0550439342 netflix 30
       if (userText.startsWith("تسجيل")) {
         const parts = userText.split(" ");
         if (parts.length >= 4) {
@@ -231,11 +195,11 @@ app.post('/webhook', async (req, res) => {
       }
 
       // ----------------------------------------------------
-      // الردود على الخدمات
+      // منطق الرد على الخدمات
       // ----------------------------------------------------
 
       // أ. Netflix
-      if (selectedId === "srv_netflix" || userText.includes("netflix") || userText.includes("نتفلكس")) {
+      if (selectedId === "srv_netflix" || userText.includes("netflix") || userText.includes("نتفلكس") || userText.includes("نتفليكس")) {
         const msg = `🎬 *اشتراكات Netflix الرسمية:*\n\n` +
                     `🔹 *شهر واحد (1 Mois):*\n` +
                     `• بروفايل واحد (1 Profil): 1,000 دج\n` +
@@ -259,7 +223,7 @@ app.post('/webhook', async (req, res) => {
         ]);
 
       // ج. Prime Video
-      } else if (selectedId === "srv_prime" || userText.includes("prime") || userText.includes("برايم")) {
+      } else if (selectedId === "srv_prime" || userText.includes("prime") || userText.includes("برايم") || userText.includes("amazon")) {
         const msg = `📦 *اشتراك Amazon Prime Video:*\n\n` +
                     `• حساب كامل (Compte complet) / شهر: 2,800 دج`;
         await sendButtonMessage(from, msg, [
@@ -276,11 +240,11 @@ app.post('/webhook', async (req, res) => {
           { id: "btn_menu", title: "باقي الخدمات 📋" }
         ]);
 
-      // هـ. Gemini Pro (تم التعديل إلى 18 شهراً)
+      // هـ. Gemini Pro (18 شهراً)
       } else if (selectedId === "srv_gemini" || userText.includes("gemini") || userText.includes("جيميني") || userText.includes("جيمني")) {
         const msg = `🧠 *اشتراك Google Gemini Pro الرسمي:*\n\n` +
                     `• مدة 18 شهر (سنة ونصف): 5,900 دج\n\n` +
-                    `✨ وصول كامل لأقوى قدرات ونماذج الذكاء الاصطناعي مع ضمان كامل المدة.`;
+                    `✨ وصول كامل لأحدث نماذج الذكاء الاصطناعي مع ضمان كامل المدة.`;
         await sendButtonMessage(from, msg, [
           { id: "btn_pay", title: "طرق الدفع 💳" },
           { id: "btn_menu", title: "باقي الخدمات 📋" }
@@ -329,7 +293,7 @@ app.post('/webhook', async (req, res) => {
       } else if (selectedId === "btn_support" || userText.includes("مسؤول") || userText.includes("مساعده")) {
         await sendTextMessage(from, `👨‍💼 مرحباً بك! تم إشعار ممثل خدمة العملاء وسيقوم بالرد عليك في هذه المحادثة مباشرة.`);
 
-      // ك. القائمة المنسدلة الكاملة (تفتح افتراضياً عند الترحيب أو طلب القائمة)
+      // ك. القائمة العامة أو الرد الافتراضي
       } else {
         await sendServiceList(from);
       }
@@ -340,9 +304,7 @@ app.post('/webhook', async (req, res) => {
   res.sendStatus(404);
 });
 
-// =================================================================
-// مجدول التذكير اليومي بانتهاء الاشتراكات (10:00 صباحاً)
-// =================================================================
+// تذكير يومي بالاشتراكات (10:00 صباحاً)
 cron.schedule('0 10 * * *', async () => {
   console.log("Checking expiring subscriptions...");
   const subs = loadSubscriptions();
@@ -361,7 +323,7 @@ cron.schedule('0 10 * * *', async () => {
 
       await sendButtonMessage(sub.phone, reminderMsg, [
         { id: "btn_pay", title: "تجديد الآن 💳" },
-        { id: "btn_support", title: "التحدث مع الدعم 👨‍💼" }
+        { id: "btn_support", title: "التحدث مع الدعم 👨‍‍💼" }
       ]);
 
       sub.reminderSent = true;
