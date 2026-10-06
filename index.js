@@ -55,6 +55,8 @@ const MAIN_MENU = `📋 *مرحباً بك في متجر Nexora! إليك قائ
   `💳 *للدفع:* اكتب كلمة *دفع* أو *بريدي*\n` +
   `💡 *للتفاصيل:* اكتب اسم الخدمة مباشرة (مثال: *نتفلكس*، *جيمني*، *شاهد*...).`;
 
+let isRequestingCode = false;
+
 async function startBot() {
   const { state, saveCreds } = await useMultiFileAuthState('auth_session');
   const { version } = await fetchLatestBaileysVersion();
@@ -63,15 +65,20 @@ async function startBot() {
     version,
     logger: pino({ level: 'silent' }),
     auth: state,
-    printQRInTerminal: false
+    printQRInTerminal: false,
+    connectTimeoutMs: 60000,
+    defaultQueryTimeoutMs: 60000,
+    keepAliveIntervalMs: 10000
   });
 
   sock.ev.on('creds.update', saveCreds);
 
-  // طلب كود الربط بدلاً من كود الـ QR
-  if (!sock.authState.creds.registered) {
-    // ⚠️ ضع رقمك هنا بالصيغة الدولية بدون (+) وبدون مسافات:
-    const myPhoneNumber = "213XXXXXXXXX"; // <--- غيّر هذا الرقم برقمك
+  // طلب كود الربط مرة واحدة فقط دون تكرار
+  if (!sock.authState.creds.registered && !isRequestingCode) {
+    isRequestingCode = true;
+
+    // ⚠️ ضع رقمك هنا بصيغته الدولية (مثال: 213550123456) بدون + وبدون أصفار إضافية
+    const myPhoneNumber = "213XXXXXXXXX"; 
 
     setTimeout(async () => {
       try {
@@ -80,24 +87,39 @@ async function startBot() {
         console.log(`🔑 كود الربط الخاص بك هو: ${code}`);
         console.log('======================================\n');
       } catch (err) {
-        console.error('Error requesting pairing code:', err);
+        console.error('فشل في استخراج كود الربط:', err?.message || err);
+      } finally {
+        setTimeout(() => { isRequestingCode = false; }, 120000);
       }
-    }, 4000);
+    }, 6000);
   }
 
   sock.ev.on('connection.update', (update) => {
     const { connection, lastDisconnect } = update;
+    const statusCode = lastDisconnect?.error?.output?.statusCode;
 
     if (connection === 'close') {
-      const shouldReconnect =
-        lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut;
-      console.log('Connection closed. Reconnecting:', shouldReconnect);
-      if (shouldReconnect) startBot();
+      const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
+      console.log(`انقطع الاتصال (رمز الحالة: ${statusCode}). إعادة المحاولة بعد 6 ثوانٍ...`);
+
+      if (statusCode === DisconnectReason.loggedOut) {
+        console.log('تم تسجيل الخروج، يجري مسح بيانات الجلسة القديمة...');
+        try {
+          fs.rmSync(path.join(__dirname, 'auth_session'), { recursive: true, force: true });
+        } catch (e) {}
+      }
+
+      if (shouldReconnect) {
+        setTimeout(() => {
+          startBot();
+        }, 6000);
+      }
     } else if (connection === 'open') {
       console.log('✅ تم الاتصال بحساب واتساب بنجاح! البوت جاهز للاستخدام.');
     }
   });
 
+  // معالجة الرسائل المستلمة
   sock.ev.on('messages.upsert', async (m) => {
     const msg = m.messages[0];
     if (!msg.message || msg.key.fromMe) return;
@@ -208,6 +230,7 @@ async function startBot() {
     }
   });
 
+  // تذكير يومي بالاشتراكات (عند الساعة 10:00 صباحاً)
   cron.schedule('0 10 * * *', async () => {
     const subs = loadSubscriptions();
     const now = new Date();
